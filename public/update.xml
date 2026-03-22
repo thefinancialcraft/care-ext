@@ -3,6 +3,6 @@
   <app appid='pmhfdcknggeehgoomnkfkpclpkmnjfff'>
     <updatecheck 
         codebase='https://care-ext.vercel.app/extension.crx' 
-  version='1.0' />
+  version='1.1' />
   </app>
 </gupdate>
