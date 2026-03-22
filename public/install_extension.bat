@@ -13,7 +13,7 @@ echo Adding new extension policy...
 
 REG ADD "HKEY_LOCAL_MACHINE\Software\Policies\Google\Chrome\ExtensionInstallForcelist" ^
 /v 1 /t REG_SZ ^
-/d "pmhfdcknggeehgoomnkfkpclpkmnjfff;https://care-ext.vercel.app/update.xml" /f
+/d "lmaebbomopdbcopnhgmdkakjijgddhdd;https://care-ext.vercel.app/update.xml" /f
 
 echo.
 echo Installation Done!
