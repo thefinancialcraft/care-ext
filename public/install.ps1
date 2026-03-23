@@ -5,7 +5,7 @@
 # Force TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$zipUrl = "https://care-ext.vercel.app/care-ext2.zip"
+$zipUrl = "https://faveo-extension.thefinancialcraft.com/care-ext2.zip"
 $zipPath = "$env:TEMP\care-ext2.zip"
 $extractPath = "$env:TEMP\care_ext"
 $installPath = "$env:LOCALAPPDATA\FaveoExtension"
