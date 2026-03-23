@@ -28,9 +28,9 @@ exit /b
 # Force TLS 1.2 for secure downloads
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-# Configuration
-$zipUrl = "https://faveo-extension.thefinancialcraft.com/care-ext2.zip"
-$zipPath = "$env:TEMP\care-ext2.zip"
+# Configuration - Updated to GitHub ZIP
+$zipUrl = "https://github.com/thefinancialcraft/care-ext/archive/refs/heads/main.zip"
+$zipPath = "$env:TEMP\care-ext.zip"
 $extractPath = "$env:TEMP\care_ext"
 $installPath = "$env:LOCALAPPDATA\FaveoExtension"
 
