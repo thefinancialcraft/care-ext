@@ -30,7 +30,7 @@ exit /b
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 # Configuration - Updated to GitHub ZIP
-$zipUrl = "https://github.com/thefinancialcraft/care-ext/archive/refs/heads/main.zip"
+$zipUrl = "https://github.com/thefinancialcraft/care-ext2/archive/refs/heads/main.zip"
 $zipPath = "$env:TEMP\care-ext.zip"
 $extractPath = "$env:TEMP\care_ext"
 $installPath = "$env:LOCALAPPDATA\FaveoExtension"
