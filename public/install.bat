@@ -39,10 +39,14 @@ try {
     Write-Host "`n[1/3] Downloading latest extension files..." -ForegroundColor Cyan
     Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing -TimeoutSec 30
 
-    Write-Host "[2/3] Extracting and preparing files..." -ForegroundColor Cyan
+    Write-Host "[2/3] Removing old version if it exists..." -ForegroundColor Cyan
     if (Test-Path $extractPath) { Remove-Item $extractPath -Recurse -Force -ErrorAction SilentlyContinue }
-    if (Test-Path $installPath) { Remove-Item $installPath -Recurse -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $installPath) { 
+        Write-Host "Cleaning up existing installation at $installPath..." -ForegroundColor Yellow
+        Remove-Item $installPath -Recurse -Force -ErrorAction Stop 
+    }
     
+    Write-Host "Unzipping extension source..." -ForegroundColor Cyan
     Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
 
     # Detect if the ZIP has a nested folder
