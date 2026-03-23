@@ -73,12 +73,13 @@ try {
     Write-Host "2. Enable 'Developer mode' (top-right toggle)." -ForegroundColor Yellow
     Write-Host "3. Click 'Load unpacked' button." -ForegroundColor Yellow
     Write-Host "4. Paste the path below and click 'Select Folder':" -ForegroundColor Yellow
+    Write-Host "5. Already installed? Just click the 'Reload' icon on the extension card." -ForegroundColor Yellow
 
     Write-Host "`n----------------------------------------------------"
     Write-Host "PATH: $installPath" -ForegroundColor Green -BackgroundColor Black
     Write-Host "----------------------------------------------------`n"
 
-    Write-Host "Done! The extension should now appear in your list.`n"
+    Write-Host "Done! Your extension is updated and ready to use.`n"
 }
 catch {
     Write-Host "`n[!] INSTALLATION FAILED:" -ForegroundColor Red
