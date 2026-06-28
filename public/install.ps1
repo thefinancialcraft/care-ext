@@ -31,6 +31,11 @@ try {
         $sourcePath = $extractPath
     }
 
+    # Use the 'extension' folder if it exists
+    if (Test-Path "$sourcePath\extension") {
+        $sourcePath = "$sourcePath\extension"
+    }
+
     New-Item -ItemType Directory -Force -Path $installPath | Out-Null
     Copy-Item "$sourcePath\*" $installPath -Recurse -Force
 
