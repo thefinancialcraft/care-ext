@@ -16,7 +16,12 @@ import {
   RotateCcw,
   AlertTriangle,
   ExternalLink,
-  Download
+  Download,
+  Star,
+  Tag,
+  Plus,
+  Trash2,
+  Folder
 } from "lucide-react";
 import "../globals.css";
 
@@ -37,14 +42,125 @@ interface ProposalRecord {
   updated_at: string;
 }
 
+export interface UserCategory {
+  id: string;
+  name: string;
+  color: string;
+  isPrimary?: boolean;
+}
+
 const PAGE_SIZE = 50;
 
 export default function ProposalsPage() {
-  const [proposals, setProposals] = useState<ProposalRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [searchQuery, setSearchQuery] = useState<string>("");
+
+  // Categories Local System State (Persisted in localStorage)
+  const [userCategories, setUserCategories] = useState<UserCategory[]>([]);
+  const [activeCategoryId, setActiveCategoryId] = useState<string>("ALL");
+  const [proposalCategoriesMap, setProposalCategoriesMap] = useState<Record<string, string[]>>({});
+  const [showManageCatModal, setShowManageCatModal] = useState<boolean>(false);
+  const [newCatName, setNewCatName] = useState<string>("");
+  const [taggingProposalNo, setTaggingProposalNo] = useState<string | null>(null);
+
+  // Load Categories & Proposal Assignments from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedCats = localStorage.getItem("tfc_user_categories");
+      if (savedCats) {
+        const parsed: UserCategory[] = JSON.parse(savedCats);
+        setUserCategories(parsed);
+        const primaryCat = parsed.find(c => c.isPrimary);
+        if (primaryCat) {
+          setActiveCategoryId(primaryCat.id);
+        }
+      } else {
+        const defaultCats: UserCategory[] = [
+          { id: "cat_hot", name: "Hot Leads", color: "#ff4444", isPrimary: false },
+          { id: "cat_followup", name: "Urgent Followup", color: "#ffbb00", isPrimary: false }
+        ];
+        setUserCategories(defaultCats);
+        localStorage.setItem("tfc_user_categories", JSON.stringify(defaultCats));
+      }
+
+      const savedMap = localStorage.getItem("tfc_proposal_categories_map");
+      if (savedMap) {
+        setProposalCategoriesMap(JSON.parse(savedMap));
+      }
+    } catch (e) {
+      console.error("Error reading localStorage for categories:", e);
+    }
+  }, []);
+
+  // Save Categories to localStorage
+  const saveCategories = (updatedCats: UserCategory[]) => {
+    setUserCategories(updatedCats);
+    try {
+      localStorage.setItem("tfc_user_categories", JSON.stringify(updatedCats));
+    } catch (e) {
+      console.error("Error saving categories to localStorage:", e);
+    }
+  };
+
+  // Save Proposal Category Mapping to localStorage
+  const saveProposalMap = (updatedMap: Record<string, string[]>) => {
+    setProposalCategoriesMap(updatedMap);
+    try {
+      localStorage.setItem("tfc_proposal_categories_map", JSON.stringify(updatedMap));
+    } catch (e) {
+      console.error("Error saving proposal mapping to localStorage:", e);
+    }
+  };
+
+  // Toggle Category as Primary (Star Button)
+  const togglePrimaryCategory = (catId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const updated = userCategories.map(cat => ({
+      ...cat,
+      isPrimary: cat.id === catId ? !cat.isPrimary : false
+    }));
+    saveCategories(updated);
+  };
+
+  // Create New Category
+  const handleCreateCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCatName.trim()) return;
+    const colors = ["#ff4444", "#33b5e5", "#ffbb00", "#00c851", "#aa66cc", "#ff8800"];
+    const randomColor = colors[userCategories.length % colors.length];
+    const newCat: UserCategory = {
+      id: `cat_${Date.now()}`,
+      name: newCatName.trim(),
+      color: randomColor,
+      isPrimary: false
+    };
+    saveCategories([...userCategories, newCat]);
+    setNewCatName("");
+  };
+
+  // Delete Category
+  const handleDeleteCategory = (catId: string) => {
+    const updated = userCategories.filter(c => c.id !== catId);
+    saveCategories(updated);
+    if (activeCategoryId === catId) {
+      setActiveCategoryId("ALL");
+    }
+  };
+
+  // Assign/Unassign Proposal to Category
+  const toggleProposalCategory = (proposalNo: string, catId: string) => {
+    const currentTags = proposalCategoriesMap[proposalNo] || [];
+    let updatedTags: string[];
+    if (currentTags.includes(catId)) {
+      updatedTags = currentTags.filter(id => id !== catId);
+    } else {
+      updatedTags = [...currentTags, catId];
+    }
+    const updatedMap = { ...proposalCategoriesMap, [proposalNo]: updatedTags };
+    saveProposalMap(updatedMap);
+  };
 
   // Active Dropdown state & Mobile Filter Modal state
   const [activeFilterDropdown, setActiveFilterDropdown] = useState<string | null>(null);
@@ -163,8 +279,16 @@ export default function ProposalsPage() {
     fetchAllProposals();
   }, [fetchAllProposals]);
 
-  // 2. Filter ALL fetched records locally based on search & active filter choices
+  // 2. Filter ALL fetched records locally based on search, category & active filter choices
   const filteredProposals = allProposals.filter((item) => {
+    // Filter by Selected Category
+    if (activeCategoryId !== "ALL") {
+      const assignedCats = proposalCategoriesMap[item.proposal_no] || [];
+      if (!assignedCats.includes(activeCategoryId)) {
+        return false;
+      }
+    }
+
     // Exclude RENEWAL by default when businessTypeFilter === "ALL"
     if (businessTypeFilter === "ALL" && item.business_type === "RENEWAL") {
       return false;
@@ -350,6 +474,53 @@ export default function ProposalsPage() {
 
         {/* INDIVIDUAL SEPARATE DIV FOR EACH FILTER ICON (DESKTOP) */}
         <div className="filter-buttons-wrapper">
+
+          {/* DIV 0: CATEGORY FILTER */}
+          <div className="separate-filter-box">
+            <button
+              className={`filter-box-btn ${activeCategoryId !== "ALL" ? "active" : ""}`}
+              title="Filter by Category"
+              onClick={() => toggleDropdown("category")}
+            >
+              <Folder size={16} />
+              <span className="filter-btn-label">
+                {activeCategoryId === "ALL"
+                  ? "CATEGORY"
+                  : userCategories.find(c => c.id === activeCategoryId)?.name.toUpperCase() || "CATEGORY"}
+              </span>
+            </button>
+            {activeFilterDropdown === "category" && (
+              <div className="filter-dropdown-popup">
+                <div className="dropdown-title">USER CATEGORIES</div>
+                <select
+                  value={activeCategoryId}
+                  onChange={(e) => {
+                    setActiveCategoryId(e.target.value);
+                    setCurrentPage(1);
+                    setActiveFilterDropdown(null);
+                  }}
+                  className="dropdown-select"
+                >
+                  <option value="ALL">ALL CATEGORIES</option>
+                  {userCategories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.isPrimary ? `⭐ ${cat.name}` : cat.name}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  className="category-manage-btn"
+                  onClick={() => {
+                    setActiveFilterDropdown(null);
+                    setShowManageCatModal(true);
+                  }}
+                >
+                  <Plus size={14} /> MANAGE CATEGORIES
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* DIV 1: STATUS FILTER */}
           <div className="separate-filter-box">
@@ -540,7 +711,6 @@ export default function ProposalsPage() {
           </div>
 
 
-
           {/* DIV 7: RESET FILTERS DIV */}
           {hasActiveFilters && (
             <div className="separate-filter-box">
@@ -603,6 +773,7 @@ export default function ProposalsPage() {
                   <th>LIVES</th>
                   <th>TYPE</th>
                   <th>AGENT NAME</th>
+                  <th>CATEGORIES</th>
                   <th>UPDATED AT</th>
                 </tr>
               </thead>
@@ -615,6 +786,9 @@ export default function ProposalsPage() {
                       : item.proposal_status?.toLowerCase() === "pending"
                       ? "status-pending"
                       : "status-other";
+
+                  const assignedCatIds = proposalCategoriesMap[item.proposal_no] || [];
+                  const assignedCats = userCategories.filter(c => assignedCatIds.includes(c.id));
 
                   return (
                     <tr key={item.proposal_no || item.idx || index}>
@@ -645,6 +819,23 @@ export default function ProposalsPage() {
                         <span className="type-tag">{item.business_type || "-"}</span>
                       </td>
                       <td>{item.agent_name || "-"}</td>
+                      <td>
+                        <div style={{ display: "flex", gap: "0.3rem", alignItems: "center", flexWrap: "wrap" }}>
+                          {assignedCats.map(cat => (
+                            <span key={cat.id} className="category-badge-tag" style={{ borderColor: cat.color }}>
+                              <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: cat.color }} />
+                              {cat.name}
+                            </span>
+                          ))}
+                          <button
+                            className="category-tag-add-btn"
+                            onClick={() => setTaggingProposalNo(item.proposal_no)}
+                            title="Tag Categories"
+                          >
+                            <Tag size={12} /> {assignedCats.length === 0 ? "Tag" : "+"}
+                          </button>
+                        </div>
+                      </td>
                       <td className="col-time">
                         {item.updated_at ? new Date(item.updated_at).toLocaleString() : "-"}
                       </td>
@@ -659,7 +850,7 @@ export default function ProposalsPage() {
         {/* PAGINATION CONTROLS */}
         <div className="pagination-bar">
           <div className="pagination-info">
-            SHOWING {proposals.length > 0 ? (currentPage - 1) * PAGE_SIZE + 1 : 0} TO{" "}
+            SHOWING {filteredProposals.length > 0 ? (currentPage - 1) * PAGE_SIZE + 1 : 0} TO{" "}
             {Math.min(currentPage * PAGE_SIZE, totalCount)} OF {totalCount} ENTRIES
           </div>
 
@@ -901,6 +1092,129 @@ export default function ProposalsPage() {
               </button>
               <button className="cal-action-btn apply" onClick={() => setShowMobileFilterModal(false)}>
                 APPLY FILTERS
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MANAGE CATEGORIES MODAL */}
+      {showManageCatModal && (
+        <div className="logs-modal-overlay" onClick={() => setShowManageCatModal(false)}>
+          <div className="mobile-filter-modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="logs-modal-header">
+              <div>
+                <h3 className="logs-modal-title">MANAGE CATEGORIES</h3>
+                <p className="logs-modal-subtitle">CREATE, DELETE & SET PRIMARY CATEGORY (⭐)</p>
+              </div>
+              <button className="logs-modal-close" onClick={() => setShowManageCatModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="mobile-filter-modal-body">
+              <div className="manage-cat-list">
+                {userCategories.length === 0 ? (
+                  <p style={{ fontSize: "0.8rem", color: "#888" }}>No categories created yet.</p>
+                ) : (
+                  userCategories.map((cat) => (
+                    <div key={cat.id} className="manage-cat-item">
+                      <div className="manage-cat-left">
+                        <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: cat.color }} />
+                        <span className="manage-cat-name">{cat.name}</span>
+                        {cat.isPrimary && (
+                          <span style={{ fontSize: "0.65rem", color: "#ffd700", fontWeight: "bold" }}>
+                            (PRIMARY)
+                          </span>
+                        )}
+                      </div>
+                      <div className="manage-cat-actions">
+                        <button
+                          className={`category-star-btn ${cat.isPrimary ? "primary" : ""}`}
+                          title={cat.isPrimary ? "Primary Default Category" : "Set as Primary Default Category"}
+                          onClick={(e) => togglePrimaryCategory(cat.id, e)}
+                        >
+                          <Star size={16} fill={cat.isPrimary ? "#ffd700" : "none"} />
+                        </button>
+                        <button
+                          className="cat-delete-btn"
+                          title="Delete Category"
+                          onClick={() => handleDeleteCategory(cat.id)}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <form onSubmit={handleCreateCategory} className="create-cat-form">
+                <input
+                  type="text"
+                  placeholder="New Category Name (e.g. VIP Clients)..."
+                  value={newCatName}
+                  onChange={(e) => setNewCatName(e.target.value)}
+                  className="create-cat-input"
+                />
+                <button type="submit" className="cal-action-btn apply">
+                  + ADD
+                </button>
+              </form>
+            </div>
+
+            <div className="mobile-filter-modal-footer">
+              <button className="cal-action-btn apply" style={{ width: "100%" }} onClick={() => setShowManageCatModal(false)}>
+                DONE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PROPOSAL TAGGING MODAL */}
+      {taggingProposalNo && (
+        <div className="logs-modal-overlay" onClick={() => setTaggingProposalNo(null)}>
+          <div className="mobile-filter-modal-container" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 380 }}>
+            <div className="logs-modal-header">
+              <div>
+                <h3 className="logs-modal-title">TAG CATEGORIES</h3>
+                <p className="logs-modal-subtitle">PROPOSAL: <code>{taggingProposalNo}</code></p>
+              </div>
+              <button className="logs-modal-close" onClick={() => setTaggingProposalNo(null)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="mobile-filter-modal-body">
+              <div className="tag-modal-options">
+                {userCategories.length === 0 ? (
+                  <p style={{ fontSize: "0.8rem", color: "#888" }}>
+                    No custom categories available. Click 'Manage Categories' to create one.
+                  </p>
+                ) : (
+                  userCategories.map((cat) => {
+                    const currentTags = proposalCategoriesMap[taggingProposalNo] || [];
+                    const isChecked = currentTags.includes(cat.id);
+                    return (
+                      <label key={cat.id} className="tag-checkbox-item">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleProposalCategory(taggingProposalNo, cat.id)}
+                        />
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: cat.color }} />
+                        <span className="manage-cat-name">{cat.name}</span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <div className="mobile-filter-modal-footer">
+              <button className="cal-action-btn apply" style={{ width: "100%" }} onClick={() => setTaggingProposalNo(null)}>
+                SAVE TAGS
               </button>
             </div>
           </div>
