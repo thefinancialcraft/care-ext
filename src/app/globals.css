@@ -21,6 +21,33 @@ body {
   overflow-y: auto;
 }
 
+/* CUSTOM THEME MATCHING SCROLLBAR (SLIDING BAR) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--black);
+  border-left: 1px solid #222;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border: 1px solid var(--white);
+  border-radius: 0px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--white);
+}
+
+/* Firefox custom scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #444 var(--black);
+}
+
 .stereo-container {
   max-width: 900px;
   width: 100%;
