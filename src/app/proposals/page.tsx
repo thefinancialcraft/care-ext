@@ -18,7 +18,7 @@ import {
   ExternalLink,
   Download
 } from "lucide-react";
-import "./globals.css";
+import "../globals.css";
 
 interface ProposalRecord {
   idx?: number;
@@ -40,6 +40,7 @@ interface ProposalRecord {
 const PAGE_SIZE = 50;
 
 export default function ProposalsPage() {
+  const [proposals, setProposals] = useState<ProposalRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -541,6 +542,7 @@ export default function ProposalsPage() {
           </div>
 
 
+
           {/* DIV 7: RESET FILTERS DIV */}
           {hasActiveFilters && (
             <div className="separate-filter-box">
@@ -659,7 +661,7 @@ export default function ProposalsPage() {
         {/* PAGINATION CONTROLS */}
         <div className="pagination-bar">
           <div className="pagination-info">
-            SHOWING {filteredProposals.length > 0 ? (currentPage - 1) * PAGE_SIZE + 1 : 0} TO{" "}
+            SHOWING {proposals.length > 0 ? (currentPage - 1) * PAGE_SIZE + 1 : 0} TO{" "}
             {Math.min(currentPage * PAGE_SIZE, totalCount)} OF {totalCount} ENTRIES
           </div>
 
