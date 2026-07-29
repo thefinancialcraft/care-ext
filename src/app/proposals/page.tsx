@@ -310,47 +310,45 @@ export default function ProposalsPage() {
 
       {/* SEARCH BAR & INDIVIDUAL SEPARATE FILTER BOXES */}
       <div className="top-filter-bar">
-        <div className="mobile-search-filter-row">
-          {/* MAIN SEARCH INPUT DIV */}
-          <div className="search-input-box">
-            <Search className="search-icon-svg" size={16} />
-            <input
-              type="text"
-              placeholder="Search by Proposal No, Customer Name, Policy No..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
+        {/* MAIN SEARCH INPUT DIV */}
+        <div className="search-input-box">
+          <Search className="search-icon-svg" size={16} />
+          <input
+            type="text"
+            placeholder="Search by Proposal No, Customer Name, Policy No..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="search-input-field"
+          />
+          {searchQuery && (
+            <button
+              className="clear-search-btn"
+              onClick={() => {
+                setSearchQuery("");
                 setCurrentPage(1);
               }}
-              className="search-input-field"
-            />
-            {searchQuery && (
-              <button
-                className="clear-search-btn"
-                onClick={() => {
-                  setSearchQuery("");
-                  setCurrentPage(1);
-                }}
-              >
-                <X size={15} />
-              </button>
-            )}
-          </div>
-
-          {/* STANDALONE SEPARATE FILTER BUTTON DIV AT RIGHT END */}
-          <div className="mobile-standalone-filter-box">
-            <button
-              className={`mobile-filter-trigger-btn ${hasActiveFilters ? "active" : ""}`}
-              onClick={() => setShowMobileFilterModal(true)}
-              title="All Filters"
             >
-              <Filter size={18} />
-              {hasActiveFilters && <span className="mobile-filter-dot" />}
+              <X size={15} />
             </button>
-          </div>
+          )}
         </div>
 
-        {/* INDIVIDUAL SEPARATE DIV FOR EACH FILTER ICON */}
+        {/* STANDALONE SEPARATE FILTER BUTTON DIV FOR MOBILE */}
+        <div className="mobile-standalone-filter-box">
+          <button
+            className={`mobile-filter-trigger-btn ${hasActiveFilters ? "active" : ""}`}
+            onClick={() => setShowMobileFilterModal(true)}
+            title="All Filters"
+          >
+            <Filter size={18} />
+            {hasActiveFilters && <span className="mobile-filter-dot" />}
+          </button>
+        </div>
+
+        {/* INDIVIDUAL SEPARATE DIV FOR EACH FILTER ICON (DESKTOP) */}
         <div className="filter-buttons-wrapper">
 
           {/* DIV 1: STATUS FILTER */}

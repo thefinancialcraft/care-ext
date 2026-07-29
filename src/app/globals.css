@@ -481,19 +481,25 @@ body {
 .top-filter-bar {
   display: flex;
   gap: 0.8rem;
-  flex-wrap: wrap;
   align-items: center;
   width: 100%;
 }
 
 .search-input-box {
   flex: 1;
-  min-width: 280px;
+  min-width: 240px;
   position: relative;
   display: flex;
   align-items: center;
   border: 2px solid var(--white);
   background-color: var(--black);
+}
+
+.filter-buttons-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
 }
 
 .search-input-box .search-icon-svg {
