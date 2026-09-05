@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import CustomDateRangePicker from "@/components/CustomDateRangePicker";
 import {
   Search,
@@ -21,7 +22,10 @@ import {
   Tag,
   Plus,
   Trash2,
-  Folder
+  Folder,
+  Info,
+  Sun,
+  Moon
 } from "lucide-react";
 import "../globals.css";
 
@@ -52,6 +56,7 @@ export interface UserCategory {
 const PAGE_SIZE = 50;
 
 export default function ProposalsPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -65,9 +70,26 @@ export default function ProposalsPage() {
   const [newCatName, setNewCatName] = useState<string>("");
   const [taggingProposalNo, setTaggingProposalNo] = useState<string | null>(null);
 
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [gwpMode, setGwpMode] = useState<"gwp" | "net">("gwp");
+
   // Load Categories & Proposal Assignments from localStorage on mount
   useEffect(() => {
     try {
+      const savedTheme = localStorage.getItem("tfc_theme") as "light" | "dark" | null;
+      if (savedTheme) {
+        setTheme(savedTheme);
+        document.documentElement.setAttribute("data-theme", savedTheme);
+      } else {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+
+      const savedSession = localStorage.getItem("tfc_user_session");
+      if (savedSession) {
+        setCurrentUser(JSON.parse(savedSession));
+      }
+
       const savedCats = localStorage.getItem("tfc_user_categories");
       if (savedCats) {
         const parsed: UserCategory[] = JSON.parse(savedCats);
@@ -88,6 +110,11 @@ export default function ProposalsPage() {
       const savedMap = localStorage.getItem("tfc_proposal_categories_map");
       if (savedMap) {
         setProposalCategoriesMap(JSON.parse(savedMap));
+      }
+
+      const savedGwpMode = localStorage.getItem("tfc_gwp_card_mode") as "gwp" | "net" | null;
+      if (savedGwpMode) {
+        setGwpMode(savedGwpMode);
       }
     } catch (e) {
       console.error("Error reading localStorage for categories:", e);
@@ -201,14 +228,31 @@ export default function ProposalsPage() {
     timestamp: string;
   }
   const [faveoLogs, setFaveoLogs] = useState<FaveoLogRecord[]>([]);
+  const [logsSearch, setLogsSearch] = useState("");
+  const [logsStatusFilter, setLogsStatusFilter] = useState("ALL");
+  const [logsCurrentPage, setLogsCurrentPage] = useState(1);
+  const [logsPageSize, setLogsPageSize] = useState(10);
+  const [showUniqueErrorsModal, setShowUniqueErrorsModal] = useState(false);
+
+  const uniqueErrorMessages = React.useMemo(() => {
+    const map = new Map<string, number>();
+    faveoLogs.forEach((log) => {
+      const err = log.error_message?.trim();
+      if (err && err !== "None") {
+        map.set(err, (map.get(err) || 0) + 1);
+      }
+    });
+    return Array.from(map.entries())
+      .map(([message, count]) => ({ message, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [faveoLogs]);
 
   const fetchLogs = useCallback(async () => {
     try {
       const { data: logsData } = await supabase
         .from("faveo_logs")
         .select("*")
-        .order("timestamp", { ascending: false })
-        .limit(10);
+        .order("timestamp", { ascending: false });
 
       if (logsData) {
         setFaveoLogs(logsData);
@@ -219,26 +263,6 @@ export default function ProposalsPage() {
   }, []);
 
   useEffect(() => {
-    async function fetchFilterOptions() {
-      try {
-        const { data } = await supabase.from("faveo_data").select("proposal_status, plan, business_type, agent_name").limit(1000);
-        if (data) {
-          const statuses = Array.from(new Set(data.map((item: any) => item.proposal_status).filter(Boolean))) as string[];
-          const plans = Array.from(new Set(data.map((item: any) => item.plan).filter(Boolean))) as string[];
-          const types = Array.from(new Set(data.map((item: any) => item.business_type).filter(Boolean))) as string[];
-          const agents = Array.from(new Set(data.map((item: any) => item.agent_name).filter(Boolean))) as string[];
-
-          setStatusOptions(statuses.sort());
-          setPlanOptions(plans.sort());
-          setBusinessTypeOptions(types.sort());
-          setAgentOptions(agents.sort());
-        }
-      } catch (e) {
-        console.error("Error loading filter options", e);
-      }
-    }
-
-    fetchFilterOptions();
     fetchLogs();
 
     // Auto-refresh faveo_logs every 1 minute (60,000 ms)
@@ -249,34 +273,121 @@ export default function ProposalsPage() {
     return () => clearInterval(intervalId);
   }, [fetchLogs]);
 
+  const filteredFaveoLogs = React.useMemo(() => {
+    return faveoLogs.filter((log) => {
+      const q = logsSearch.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        (log.agent_name && log.agent_name.toLowerCase().includes(q)) ||
+        (log.agent_id && log.agent_id.toLowerCase().includes(q)) ||
+        (log.error_message && log.error_message.toLowerCase().includes(q)) ||
+        (log.status && log.status.toLowerCase().includes(q)) ||
+        (log.id && String(log.id).toLowerCase().includes(q));
+
+      const matchesStatus =
+        logsStatusFilter === "ALL" ||
+        (log.status && log.status.toLowerCase() === logsStatusFilter.toLowerCase());
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [faveoLogs, logsSearch, logsStatusFilter]);
+
+  const logsTotalPages = Math.ceil(filteredFaveoLogs.length / (logsPageSize === -1 ? filteredFaveoLogs.length || 1 : logsPageSize)) || 1;
+
+  const paginatedFaveoLogs = React.useMemo(() => {
+    if (logsPageSize === -1) return filteredFaveoLogs;
+    const start = (logsCurrentPage - 1) * logsPageSize;
+    return filteredFaveoLogs.slice(start, start + logsPageSize);
+  }, [filteredFaveoLogs, logsCurrentPage, logsPageSize]);
+
+  useEffect(() => {
+    setLogsCurrentPage(1);
+  }, [logsSearch, logsStatusFilter, logsPageSize]);
+
   const [allProposals, setAllProposals] = useState<ProposalRecord[]>([]);
 
-  // 1. Fetch ALL records from Supabase ONCE on page mount
-  const fetchAllProposals = useCallback(async () => {
-    setLoading(true);
+  // Calculate filter options dynamically when allProposals updates
+  useEffect(() => {
+    if (allProposals.length > 0) {
+      const statuses = Array.from(new Set(allProposals.map((item) => item.proposal_status).filter(Boolean))) as string[];
+      const plans = Array.from(new Set(allProposals.map((item) => item.plan).filter(Boolean))) as string[];
+      const types = Array.from(new Set(allProposals.map((item) => item.business_type).filter(Boolean))) as string[];
+      const agents = Array.from(new Set(allProposals.map((item) => item.agent_name).filter(Boolean))) as string[];
+
+      setStatusOptions(statuses.sort());
+      setPlanOptions(plans.sort());
+      setBusinessTypeOptions(types.sort());
+      setAgentOptions(agents.sort());
+    }
+  }, [allProposals]);
+
+  // 1. Fetch ALL records from Supabase ONCE on page mount (handling PostgREST 1000 row cap)
+  const fetchAllProposals = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
 
     try {
-      const { data, error: supabaseError } = await supabase
-        .from("faveo_data")
-        .select("*")
-        .order("updated_at", { ascending: false });
+      let allData: ProposalRecord[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
 
-      if (supabaseError) {
-        throw supabaseError;
+      while (hasMore) {
+        const { data, error: supabaseError } = await supabase
+          .from("faveo_data")
+          .select("*")
+          .order("updated_at", { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (supabaseError) {
+          throw supabaseError;
+        }
+
+        if (data && data.length > 0) {
+          allData = [...allData, ...data];
+          if (data.length < pageSize) {
+            hasMore = false;
+          } else {
+            page++;
+          }
+        } else {
+          hasMore = false;
+        }
       }
 
-      setAllProposals(data || []);
+      setAllProposals(allData);
     } catch (err: any) {
       console.error("Error fetching proposals:", err);
       setError(err.message || "Failed to load proposals data from Supabase.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
+  const handleDeleteProposal = async (proposalNo: string) => {
+    if (!window.confirm(`ARE YOU SURE YOU WANT TO DELETE PROPOSAL NO ${proposalNo}?`)) return;
+    try {
+      const { error } = await supabase
+        .from("faveo_data")
+        .delete()
+        .eq("proposal_no", proposalNo);
+      if (error) throw error;
+      
+      setAllProposals(prev => prev.filter(p => p.proposal_no !== proposalNo));
+    } catch (err: any) {
+      alert("FAILED TO DELETE PROPOSAL: " + err.message);
+    }
+  };
+
   useEffect(() => {
     fetchAllProposals();
+
+    // Auto-refresh proposals every 3 minutes (180,000 ms)
+    const intervalId = setInterval(() => {
+      fetchAllProposals(true);
+    }, 180000);
+
+    return () => clearInterval(intervalId);
   }, [fetchAllProposals]);
 
   // 2. Filter ALL fetched records locally based on search, category & active filter choices
@@ -384,8 +495,63 @@ export default function ProposalsPage() {
     setActiveFilterDropdown(null);
   };
 
+  const toggleTheme = () => {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    setTheme(nextTheme);
+    localStorage.setItem("tfc_theme", nextTheme);
+    document.documentElement.setAttribute("data-theme", nextTheme);
+  };
+
+  const getDynamicKey = () => {
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, "0");
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const yy = String(today.getFullYear()).slice(-2);
+    const dateStr = `${yy}${mm}${dd}`;
+    const map = ["X", "m", "8", "P", "q", "Z", "v", "2", "y", "K"];
+    const obfuscated = dateStr.split("").map(d => map[parseInt(d)]).join("");
+    return `TFC${obfuscated}SECURE`;
+  };
+
+  const handleLoginRedirect = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const key = getDynamicKey();
+    const timestamp = Math.floor(Date.now() / 1000);
+    const obfTime = btoa(timestamp.toString()); // Base64 obfuscation
+    router.push(`/login?tfc_key=${key}&tfc_time=${obfTime}`);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("tfc_user_session");
+    setCurrentUser(null);
+  };
+
   return (
     <div className="proposals-page-wrapper">
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", width: "100%", marginBottom: "-1rem", gap: "0.5rem" }}>
+        {currentUser ? (
+          <div className="user-profile-badge" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <span className="user-profile-name" style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-primary)" }}>
+              👤 {currentUser.user_name || currentUser.employee_id} ({currentUser.role || "Admin"})
+            </span>
+            <Link href="/dashboard" className="theme-toggle-btn" title="Go to Admin Dashboard" style={{ textDecoration: "none" }}>
+              DASHBOARD
+            </Link>
+            <button onClick={handleLogout} className="theme-toggle-btn logout-btn" title="Logout" style={{ borderColor: "#ff4444", color: "#ff4444" }}>
+              LOGOUT
+            </button>
+          </div>
+        ) : (
+          <button onClick={handleLoginRedirect} className="theme-toggle-btn" title="Dashboard Login">
+            <User size={14} />
+            DASHBOARD LOGIN
+          </button>
+        )}
+        <button className="theme-toggle-btn" onClick={toggleTheme} title="Toggle Dark/Light Mode">
+          {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+          {theme === "dark" ? "LIGHT" : "DARK"}
+        </button>
+      </div>
       <header className="proposals-header">
         <div className="header-left">
           <Link href="/extension" className="back-link">
@@ -740,7 +906,7 @@ export default function ProposalsPage() {
               <code>NEXT_PUBLIC_SUPABASE_URL</code> & <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>
             </small>
           </div>
-          <button className="retry-btn" onClick={fetchAllProposals}>RETRY</button>
+          <button className="retry-btn" onClick={() => fetchAllProposals()}>RETRY</button>
         </div>
       )}
 
@@ -766,8 +932,17 @@ export default function ProposalsPage() {
                   <th>POLICY NO</th>
                   <th>PLAN</th>
                   <th>STATUS</th>
-                  <th>PAYMENT (₹)</th>
-                  <th>GWP (₹)</th>
+                  {gwpMode === "gwp" ? (
+                    <>
+                      <th>PAYMENT (₹)</th>
+                      <th>GWP (₹)</th>
+                    </>
+                  ) : (
+                    <>
+                      <th>GWP (₹)</th>
+                      <th>PAYMENT (₹)</th>
+                    </>
+                  )}
                   <th>LOGIN DATE</th>
                   <th>START DATE</th>
                   <th>LIVES</th>
@@ -775,6 +950,7 @@ export default function ProposalsPage() {
                   <th>AGENT NAME</th>
                   <th>CATEGORIES</th>
                   <th>UPDATED AT</th>
+                  {currentUser?.role?.toLowerCase() === "admin" && <th>ACTIONS</th>}
                 </tr>
               </thead>
               <tbody>
@@ -806,12 +982,25 @@ export default function ProposalsPage() {
                           {item.proposal_status || "-"}
                         </span>
                       </td>
-                      <td className="col-amount">
-                        {item.payment_amount ? `₹${Number(item.payment_amount).toLocaleString()}` : "-"}
-                      </td>
-                      <td className="col-amount">
-                        {item.gwp ? `₹${Number(item.gwp).toLocaleString()}` : "-"}
-                      </td>
+                      {gwpMode === "gwp" ? (
+                        <>
+                          <td className="col-amount">
+                            {item.payment_amount ? `₹${Number(item.payment_amount).toLocaleString()}` : "-"}
+                          </td>
+                          <td className="col-amount">
+                            {item.gwp ? `₹${Number(item.gwp).toLocaleString()}` : "-"}
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="col-amount">
+                            {item.gwp ? `₹${Number(item.gwp).toLocaleString()}` : "-"}
+                          </td>
+                          <td className="col-amount">
+                            {item.payment_amount ? `₹${Number(item.payment_amount).toLocaleString()}` : "-"}
+                          </td>
+                        </>
+                      )}
                       <td>{item.login_date || "-"}</td>
                       <td>{item.policy_start_date || "-"}</td>
                       <td className="col-center">{item.no_of_lives ?? "-"}</td>
@@ -839,6 +1028,26 @@ export default function ProposalsPage() {
                       <td className="col-time">
                         {item.updated_at ? new Date(item.updated_at).toLocaleString() : "-"}
                       </td>
+                      {currentUser?.role?.toLowerCase() === "admin" && (
+                        <td>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProposal(item.proposal_no)}
+                            style={{
+                              background: "none",
+                              border: "1px solid #ff4444",
+                              color: "#ff4444",
+                              padding: "0.2rem 0.4rem",
+                              fontFamily: "'Space Mono', monospace",
+                              fontSize: "0.65rem",
+                              cursor: "pointer",
+                              textTransform: "uppercase"
+                            }}
+                          >
+                            DEL
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -901,11 +1110,62 @@ export default function ProposalsPage() {
             <div className="logs-modal-header">
               <div>
                 <h3 className="logs-modal-title">AGENT FETCH LOGS DIRECTORY</h3>
-                <p className="logs-modal-subtitle">DATABASE TABLE: <code>faveo_logs</code></p>
+                <p className="logs-modal-subtitle">
+                  DATABASE TABLE: <code>faveo_logs</code> &bull; Total Records: <strong>{faveoLogs.length}</strong>
+                </p>
               </div>
               <button className="logs-modal-close" onClick={() => setShowLogsModal(false)}>
                 <X size={20} />
               </button>
+            </div>
+
+            {/* LOGS TOOLBAR */}
+            <div className="logs-modal-toolbar">
+              <div className="logs-modal-search-box">
+                <Search size={14} className="search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search logs by Agent Name, ID, Error..."
+                  value={logsSearch}
+                  onChange={(e) => setLogsSearch(e.target.value)}
+                />
+              </div>
+
+              <div className="logs-modal-filters">
+                <select
+                  className="logs-modal-select"
+                  value={logsStatusFilter}
+                  onChange={(e) => setLogsStatusFilter(e.target.value)}
+                >
+                  <option value="ALL">ALL STATUSES</option>
+                  <option value="success">SUCCESS</option>
+                  <option value="dom_error">DOM_ERROR</option>
+                  <option value="error">ERROR</option>
+                  <option value="fetching">FETCHING</option>
+                </select>
+
+                <select
+                  className="logs-modal-select"
+                  value={logsPageSize}
+                  onChange={(e) => setLogsPageSize(Number(e.target.value))}
+                >
+                  <option value={10}>10 PER PAGE</option>
+                  <option value={25}>25 PER PAGE</option>
+                  <option value={50}>50 PER PAGE</option>
+                  <option value={100}>100 PER PAGE</option>
+                  <option value={250}>250 PER PAGE</option>
+                  <option value={-1}>SHOW ALL LOGS</option>
+                </select>
+
+                <button
+                  type="button"
+                  className="logs-info-btn"
+                  onClick={() => setShowUniqueErrorsModal(true)}
+                  title="View All Unique Error Messages"
+                >
+                  <Info size={16} />
+                </button>
+              </div>
             </div>
 
             <div className="logs-modal-body">
@@ -927,36 +1187,157 @@ export default function ProposalsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {faveoLogs.length === 0 ? (
+                    {paginatedFaveoLogs.length === 0 ? (
                       <tr>
-                        <td colSpan={11} className="col-center">No logs recorded in faveo_logs table.</td>
+                        <td colSpan={11} className="col-center">
+                          {faveoLogs.length === 0
+                            ? "No logs recorded in faveo_logs table."
+                            : "No logs found matching your search filter."}
+                        </td>
                       </tr>
                     ) : (
-                      faveoLogs.map((log, idx) => (
-                        <tr key={log.id || idx}>
-                          <td className="col-idx">{idx + 1}</td>
-                          <td><code>{log.id || "-"}</code></td>
-                          <td><strong>{log.agent_name || "-"}</strong></td>
-                          <td><code>{log.agent_id || "-"}</code></td>
-                          <td>
-                            <span className={`status-badge ${log.status?.toLowerCase() === "success" ? "status-inforce" : "status-other"}`}>
-                              {log.status || "-"}
-                            </span>
-                          </td>
-                          <td className="col-amount">{log.total_records ?? 0}</td>
-                          <td className="col-amount">{log.uploaded_records ?? 0}</td>
-                          <td>{log.start_date || "-"}</td>
-                          <td>{log.end_date || "-"}</td>
-                          <td className="col-time">{log.error_message || "None"}</td>
-                          <td className="col-time">
-                            {log.timestamp ? new Date(log.timestamp).toLocaleString() : "-"}
-                          </td>
-                        </tr>
-                      ))
+                      paginatedFaveoLogs.map((log, idx) => {
+                        const globalIdx =
+                          logsPageSize === -1
+                            ? idx + 1
+                            : (logsCurrentPage - 1) * logsPageSize + idx + 1;
+                        const isError =
+                          log.status?.toLowerCase().includes("error") ||
+                          log.status?.toLowerCase().includes("fail");
+                        return (
+                          <tr key={log.id || idx}>
+                            <td className="col-idx">{globalIdx}</td>
+                            <td><code>{log.id || "-"}</code></td>
+                            <td><strong>{log.agent_name || "-"}</strong></td>
+                            <td><code>{log.agent_id || "-"}</code></td>
+                            <td>
+                              <span
+                                className={`status-badge ${
+                                  log.status?.toLowerCase() === "success"
+                                    ? "status-inforce"
+                                    : log.status?.toLowerCase() === "fetching"
+                                    ? "status-pending"
+                                    : isError
+                                    ? "status-failed"
+                                    : "status-other"
+                                }`}
+                              >
+                                {log.status || "-"}
+                              </span>
+                            </td>
+                            <td className="col-amount">{log.total_records ?? 0}</td>
+                            <td className="col-amount">{log.uploaded_records ?? 0}</td>
+                            <td>{log.start_date || "-"}</td>
+                            <td>{log.end_date || "-"}</td>
+                            <td className={log.error_message && log.error_message !== "None" ? "col-error-text" : "col-time"}>
+                              {log.error_message || "None"}
+                            </td>
+                            <td className="col-time">
+                              {log.timestamp ? new Date(log.timestamp).toLocaleString() : "-"}
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            {/* LOGS PAGINATOR FOOTER */}
+            <div className="logs-modal-footer">
+              <div className="pagination-info">
+                SHOWING {filteredFaveoLogs.length > 0 ? (logsPageSize === -1 ? 1 : (logsCurrentPage - 1) * logsPageSize + 1) : 0} TO{" "}
+                {logsPageSize === -1 ? filteredFaveoLogs.length : Math.min(logsCurrentPage * logsPageSize, filteredFaveoLogs.length)} OF {filteredFaveoLogs.length} LOGS
+              </div>
+
+              <div className="pagination-buttons">
+                <button
+                  className="page-btn"
+                  onClick={() => setLogsCurrentPage(1)}
+                  disabled={logsCurrentPage === 1 || logsPageSize === -1}
+                  title="First Page"
+                >
+                  &laquo; FIRST
+                </button>
+                <button
+                  className="page-btn"
+                  onClick={() => setLogsCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={logsCurrentPage === 1 || logsPageSize === -1}
+                >
+                  &larr; PREV
+                </button>
+
+                <span className="page-indicator">
+                  PAGE <strong>{logsCurrentPage}</strong> OF <strong>{logsTotalPages}</strong>
+                </span>
+
+                <button
+                  className="page-btn"
+                  onClick={() => setLogsCurrentPage((prev) => Math.min(prev + 1, logsTotalPages))}
+                  disabled={logsCurrentPage >= logsTotalPages || logsPageSize === -1}
+                >
+                  NEXT &rarr;
+                </button>
+                <button
+                  className="page-btn"
+                  onClick={() => setLogsCurrentPage(logsTotalPages)}
+                  disabled={logsCurrentPage >= logsTotalPages || logsPageSize === -1}
+                  title="Last Page"
+                >
+                  LAST &raquo;
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UNIQUE ERRORS SUB-MODAL */}
+      {showUniqueErrorsModal && (
+        <div className="logs-modal-overlay" onClick={() => setShowUniqueErrorsModal(false)}>
+          <div className="unique-errors-modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="logs-modal-header">
+              <div>
+                <h3 className="logs-modal-title">UNIQUE ERROR MESSAGES</h3>
+                <p className="logs-modal-subtitle">
+                  TOTAL UNIQUE ERRORS: <strong>{uniqueErrorMessages.length}</strong> &bull; CLICK ANY ERROR TO FILTER LOGS
+                </p>
+              </div>
+              <button className="logs-modal-close" onClick={() => setShowUniqueErrorsModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="logs-modal-body">
+              {uniqueErrorMessages.length === 0 ? (
+                <div className="empty-state">No error messages recorded in logs.</div>
+              ) : (
+                <div className="unique-error-list">
+                  {uniqueErrorMessages.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="unique-error-card"
+                      onClick={() => {
+                        setLogsSearch(item.message);
+                        setShowUniqueErrorsModal(false);
+                      }}
+                    >
+                      <div className="unique-error-info">
+                        <div className="unique-error-title">
+                          #{idx + 1}. {item.message}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.8rem" }}>
+                        <span className="unique-error-badge">
+                          {item.count} {item.count === 1 ? "LOG" : "LOGS"}
+                        </span>
+                        <button className="filter-error-btn">FILTER</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
